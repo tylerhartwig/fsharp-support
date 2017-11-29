@@ -32,3 +32,9 @@ type WarningHighlighting(message, range) =
                              OverlapResolve = OverlapResolveKind.UNRESOLVED_ERROR)>]
 type UnresolvedHighlighting(message, range) = 
     inherit ErrorOrWarningHighlightingBase(message, range)
+
+[<StaticSeverityHighlighting(Severity.WARNING, HighlightingGroupIds.IdentifierHighlightingsGroup, 
+                             AttributeId = HighlightingAttributeIds.DEADCODE_ATTRIBUTE, 
+                             OverlapResolve = OverlapResolveKind.WARNING)>]
+type UnusedWarningHighlighting(range) =
+    inherit ErrorOrWarningHighlightingBase("Unused open", range)
