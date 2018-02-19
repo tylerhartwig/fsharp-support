@@ -12,6 +12,11 @@
       <OutputFile>src\Parsing\FSharpTokenType.Generated.cs</OutputFile>
       <SubType>Designer</SubType>
     </TokenGenerator>
+
+    <Compile Remove="Src\Parsing\FSharpTokenType.Generated.cs" />
+    <Compile Include="Src\Parsing\FSharpTokenType.Generated.cs">
+      <DependentUpon>FSharpTokens.xml</DependentUpon>
+    </Compile>
   </ItemGroup>
 
   <ItemGroup>
