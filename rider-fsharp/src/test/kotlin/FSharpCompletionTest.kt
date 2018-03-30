@@ -1,4 +1,3 @@
-import com.intellij.openapi.editor.impl.EditorImpl
 import com.jetbrains.rider.projectView.solution
 import com.jetbrains.rider.test.CompletionTestBase
 import com.jetbrains.rider.test.framework.frameworkLogger
