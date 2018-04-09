@@ -94,7 +94,7 @@ type FSharpItemsContainer
         |> Option.bind tryGetProjectMapping
         |> Option.bind (fun mapping -> mapping.TryGetProjectItem(viewItem))
 
-    let getItems (msBuildProject: MsBuildProject) itemTypeFilter allowNonDefaultItemType =
+    let getItems (msBuildProject: MsBuildProject) itemTypeFilter getItemsByName allowNonDefaultItemType =
         let items = List<RdProjectItemWithTargetFrameworks>()
         for rdProject in msBuildProject.RdProjects do
             let targetFrameworkId = msBuildProject.GetTargetFramework(rdProject)
@@ -105,6 +105,9 @@ type FSharpItemsContainer
                 // todo: allow passing additional default item types to the filter ctor
                 itemTypeFilter item.ItemType && allowNonDefaultItemType ||
                 not (filter.FilterByItemType(item.ItemType, item.IsImported())))
+            |> Seq.filter (fun item ->
+                let (BuildAction buildAction) = item.ItemType
+                not (buildAction.IsNone() && getItemsByName item.EvaluatedInclude |> Seq.length > 1))
             |> List.ofSeq
             |> List.filter (fun item -> itemTypeFilter item.ItemType)
             |> List.fold (fun index item ->
@@ -181,9 +184,17 @@ type FSharpItemsContainer
 
             match projectMark with
             | FSharProjectMark ->
-                let compileBeforeItems = getItems msBuildProject isCompileBefore true
-                let compileAfterItems = getItems msBuildProject isCompileAfter true 
-                let restItems = getItems msBuildProject (changesOrder >> not) false
+                let itemsByName = OneToListMap()
+                for rdProject in msBuildProject.RdProjects do
+                    for rdItem in rdProject.Items do
+                        itemsByName.Add(rdItem.EvaluatedInclude, rdItem.ItemType)
+
+                let getItemsByName name =
+                    itemsByName.GetValuesSafe(name)
+
+                let compileBeforeItems = getItems msBuildProject isCompileBefore getItemsByName true
+                let compileAfterItems = getItems msBuildProject isCompileAfter getItemsByName true 
+                let restItems = getItems msBuildProject (changesOrder >> not) getItemsByName false
                 let items =
                     compileBeforeItems.Concat(restItems).Concat(compileAfterItems)
                     |> Seq.map (fun item ->
@@ -191,6 +202,7 @@ type FSharpItemsContainer
                     |> List.ofSeq
                 let targetFrameworkIds = HashSet(msBuildProject.TargetFrameworkIds)
 
+                begin
                 use lock = locker.UsingWriteLock()
                 x.ProjectMappings.[projectMark] <-
                     let projectDirectory = projectMark.Location.Directory
@@ -198,6 +210,8 @@ type FSharpItemsContainer
                     let mapping = ProjectMapping(projectDirectory, projectUniqueName, targetFrameworkIds, logger)
                     mapping.Update(items)
                     mapping
+                end
+
                 refresher.Refresh(projectMark, true)
             | _ -> ()
 
@@ -698,8 +712,8 @@ type ProjectMapping(projectDirectory, projectUniqueName, targetFrameworkIds: ISe
                     let itemInfo = ItemInfo.Create(physicalPath, logicalPath, parent, currentState.NextSortKey)
                     if files.ContainsKey(physicalPath) then
                         logger.Warn(sprintf "%O added twice" physicalPath)
-                        files.Remove(physicalPath) |> ignore
-                    files.Add(physicalPath, FileItem (itemInfo, buildAction, item.TargetFrameworkIds))
+                    else
+                        files.Add(physicalPath, FileItem (itemInfo, buildAction, item.TargetFrameworkIds))
             | _ -> ()
 
     member x.Write(writer: UnsafeWriter) =
