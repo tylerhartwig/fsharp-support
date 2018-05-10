@@ -26,6 +26,7 @@
     <Compile Include="src\Comment\FSharpBlockCommentActionProvider.fs" />
     <Compile Include="src\Comment\FSharpLineCommentActionProvider.fs" />
     <Compile Include="src\Debugger\FSharpBreakpointVariantsProvider.fs" />
+    <Compile Include="src\Debugger\FSharpDebuggerLocalSymbolProvider.fs" />
     <Compile Include="src\Debugger\FSharpExpressionEvaluationInfoProvider.fs" />
     <Compile Include="src\Foldings\FSharpCodeFoldings.fs" />
     <Compile Include="src\Searching\FSharpPathReference.fs" />
@@ -47,8 +48,8 @@
     <Compile Include="src\ZoneMarker.fs" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="FSharp.Core" Version="4.1.18" />
-    <PackageReference Include="JetBrains.Fantomas" Version="2.6.11" />
+    <PackageReference Include="FSharp.Core" Version="4.3.4" />
+    <PackageReference Include="Fantomas" Version="2.7.1" />
     <PackageReference Include="JetBrains.FSharp.Compiler.Service" Version="$(FCSVersion)" />
     <PackageReference Include="JetBrains.Rider.SDK" Version="$(RiderSDKVersion)" />
   </ItemGroup>
