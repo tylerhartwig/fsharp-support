@@ -23,6 +23,7 @@ import com.intellij.openapi.extensions.Extensions
 import com.intellij.openapi.fileTypes.PlainTextLanguage
 import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.util.Key
+import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.wm.impl.ToolWindowManagerImpl
@@ -33,6 +34,7 @@ import com.intellij.xdebugger.XDebuggerManager
 import com.intellij.xdebugger.attach.XLocalAttachDebuggerProvider
 import com.jetbrains.rider.debugger.DotNetDebugProcess
 import com.jetbrains.rider.model.RdFsiSessionInfo
+import com.jetbrains.rider.util.NetUtils
 import com.jetbrains.rider.util.idea.application
 import com.jetbrains.rider.util.idea.pumpMessages
 import org.jetbrains.concurrency.AsyncPromise
@@ -122,10 +124,14 @@ class FsiConsoleRunner(sessionInfo: RdFsiSessionInfo, val fsiHost: FsiHost)
     }
 
     override fun createProcess(): Process? {
+        if (!SystemInfo.isWindows) {
+            val port = NetUtils.findFreePort(12345)
+            cmdLine.environment["MONO_OPTIONS"] = "--debug --debugger-agent=transport=dt_socket,address=127.0.0.1:$port,server=y,suspend=n"
+        }
         if (!File(cmdLine.exePath).exists()) return null // todo: dialog with a link to settings
-        val process = cmdLine.createProcess()
+            val process = cmdLine.createProcess()
         pid = OSProcessUtil.getProcessID(process)
-        return process
+            return process
     }
 
     override fun isAutoFocusContent() = false
