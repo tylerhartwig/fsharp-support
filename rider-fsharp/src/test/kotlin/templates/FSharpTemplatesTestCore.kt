@@ -1,16 +1,12 @@
-package templates
-
-import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.jetbrains.rider.debugger.DotNetDebugRunner
 import com.jetbrains.rider.diagnostics.LogTraceScenarios
 import com.jetbrains.rider.run.mono.MonoDebugProfileState
 import com.jetbrains.rider.test.BaseTestWithSolutionBase
-import com.jetbrains.rider.test.enums.ToolsetVersion
 import com.jetbrains.rider.test.annotations.TestEnvironment
+import com.jetbrains.rider.test.enums.ToolsetVersion
 import com.jetbrains.rider.test.framework.*
 import com.jetbrains.rider.test.scriptingApi.*
-import com.jetbrains.rider.util.idea.ReSharperHostException
 import org.testng.annotations.AfterClass
 import org.testng.annotations.BeforeMethod
 import org.testng.annotations.Test
@@ -29,10 +25,8 @@ abstract class FSharpTemplatesTestCore : BaseTestWithSolutionBase() {
 
     private val editorGoldFile: File
         get() = File(testCaseGoldDirectory, testCaseName + "_opened")
-    protected val configGoldFile: File
+    private val configGoldFile: File
         get() = File(testCaseGoldDirectory, testCaseName + "_rcf")
-    protected val debugGoldFile: File
-        get() = File(testCaseGoldDirectory, testCaseName + "_debug")
     private val binFolderContentGoldFile: File
         get() = File(testCaseGoldDirectory, testCaseName + "_bin")
     private val fileListAbsoluteFilesGoldFile: File
@@ -92,7 +86,6 @@ abstract class FSharpTemplatesTestCore : BaseTestWithSolutionBase() {
     @TestEnvironment(toolset = ToolsetVersion.TOOLSET_15_CORE)
     fun consoleAppCoreTemplate() {
         val projectName = "ConsoleApplication"
-        val programFs = activeSolutionDirectory.resolve(projectName).resolve("Program.fs")
         doCoreTest(ProjectTemplateIds.Core.fsharp_consoleApplication, projectName) { project ->
             checkSwea(project)
             checkCanExecuteSelectedRunConfiguration(project)
