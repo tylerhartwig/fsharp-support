@@ -9,7 +9,7 @@ open JetBrains.ReSharper.Plugins.FSharp.Common
 open JetBrains.ReSharper.Plugins.FSharp.Common.Checker
 open JetBrains.ReSharper.Plugins.FSharp.ProjectModel
 open JetBrains.ReSharper.Plugins.FSharp.Psi.LanguageService.Parsing
-open JetBrains.ReSharper.Plugins.FSharp.Services.ContextActions
+open JetBrains.ReSharper.Plugins.FSharp.Psi.Features.Fsi
 open Microsoft.FSharp.Compiler.SourceCodeServices
 open NUnit.Framework
 
