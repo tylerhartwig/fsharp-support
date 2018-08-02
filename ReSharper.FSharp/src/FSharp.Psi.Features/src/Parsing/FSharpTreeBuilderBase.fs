@@ -2,24 +2,22 @@
 
 open System
 open System.Collections.Generic
+open JetBrains.DataFlow
 open JetBrains.ReSharper.Psi
 open JetBrains.ReSharper.Psi.ExtensionsAPI.Tree
 open JetBrains.ReSharper.Plugins.FSharp.Common.Util
 open JetBrains.ReSharper.Plugins.FSharp.Psi.Impl.Tree
 open JetBrains.ReSharper.Plugins.FSharp.Psi.Parsing
 open JetBrains.ReSharper.Plugins.FSharp.Psi.Tree
-open JetBrains.ReSharper.Plugins.FSharp.Psi.Util
 open JetBrains.ReSharper.Psi.Parsing
-open JetBrains.ReSharper.Psi.TreeBuilder
 open JetBrains.Util
-open JetBrains.Util.dataStructures.TypedIntrinsics
 open Microsoft.FSharp.Compiler
 open Microsoft.FSharp.Compiler.Ast
 open Microsoft.FSharp.Compiler.PrettyNaming
 
 [<AbstractClass>]
-type FSharpTreeBuilderBase(file: IPsiSourceFile, lexer: ILexer, lifetime) as this =
-    inherit TreeStructureBuilderBase(lifetime)
+type FSharpTreeBuilderBase(file: IPsiSourceFile, lexer: ILexer, lifetime: Lifetime) =
+    inherit TreeBuilderBase(lifetime, lexer)
 
     let document = file.Document
 
@@ -200,14 +198,13 @@ type FSharpTreeBuilderBase(file: IPsiSourceFile, lexer: ILexer, lifetime) as thi
         | UnionCaseFullType(_) ->
             true // todo: used in FSharp.Core only, otherwise warning
 
-    member internal x.ProcessUnionCases(cases) =
-        match cases with
-        | [singleCase] ->
-            x.ProcessUnionCase(singleCase)
-            ElementType.SINGLE_CASE_UNION_DECLARATION
-        | cases ->
-            for case in cases do x.ProcessUnionCase(case)
-            ElementType.MULTIPLE_CASES_UNION_DECLARATION
+    member internal x.ProcessUnionCases(cases, range: Range.range) =
+        range |> x.GetStartOffset |> x.AdvanceToOffset
+        let casesListMark = x.Mark()
+        for case in cases do
+            x.ProcessUnionCase(case)
+        range |> x.GetEndOffset |> x.AdvanceToOffset
+        x.Done(casesListMark, ElementType.UNION_CASES_LIST)
 
     member internal x.ProcessUnionCase (UnionCase(_,id,caseType,_,_,range)) =
         range |> x.GetStartOffset |> x.AdvanceToOffset
@@ -215,8 +212,8 @@ type FSharpTreeBuilderBase(file: IPsiSourceFile, lexer: ILexer, lifetime) as thi
 
         x.ProcessIdentifier(id)
         let hasFields = x.ProcessUnionCaseType(caseType)
-        let elementType = if hasFields then ElementType.UNION_CASE_DECLARATION
-                                       else ElementType.FIELD_DECLARATION
+        let elementType = if hasFields then ElementType.NESTED_TYPE_UNION_CASE_DECLARATION
+                                       else ElementType.SINGLETON_CASE_DECLARATION
         range |> x.GetEndOffset |> x.AdvanceToOffset
         x.Done(mark, elementType)
 
@@ -759,12 +756,3 @@ type FSharpTreeBuilderBase(file: IPsiSourceFile, lexer: ILexer, lifetime) as thi
     member x.ProcessIndexerArg arg =
         for expr in arg.Exprs do
             x.ProcessLocalExpression(expr)
-
-    override val Builder = PsiBuilder(lexer, ElementType.F_SHARP_IMPL_FILE, this, lifetime)
-    override val NewLine = FSharpTokenType.NEW_LINE
-    override val CommentsOrWhiteSpacesTokens = FSharpTokenType.CommentsOrWhitespaces
-    override x.GetExpectedMessage name  = NotImplementedException() |> raise
-
-    interface IPsiBuilderTokenFactory with
-        member x.CreateToken(tokenType, buffer, startOffset, endOffset) =
-            tokenType.Create(buffer, TreeOffset(startOffset), TreeOffset(endOffset))

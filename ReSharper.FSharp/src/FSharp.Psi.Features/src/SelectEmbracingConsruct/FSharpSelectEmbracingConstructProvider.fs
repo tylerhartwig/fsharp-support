@@ -25,6 +25,8 @@ type FSharpSelection(file, range, parentRanges: DocumentRange list) =
         | parent :: rest -> FSharpSelection(file, parent, rest) :> _
         | _ -> null
 
+    override x.ExtendToWholeLine = ExtendToTheWholeLinePolicy.DO_NOT_EXTEND
+
 
 type FSharpDotSelection(file, document, range: TreeTextRange, parentRanges: DocumentRange list) =
     inherit DotSelection<IFSharpFile>(file, range.StartOffset, range.Length = 0, false)
@@ -54,8 +56,10 @@ type FSharpDotSelection(file, document, range: TreeTextRange, parentRanges: Docu
         | _ -> null
     override x.CreateTokenPartSelection(tokenNode, treeTextRange) = null
 
-[<AbstractClass>]
-type FSharpSelectEmbracingConstructProviderBase() =
+    override x.ExtendToWholeLine = ExtendToTheWholeLinePolicy.DO_NOT_EXTEND
+
+[<ProjectFileType(typeof<FSharpProjectFileType>)>]
+type FSharpSelectEmbracingConstructProvider() =
     let getRanges = function
         | TraverseStep.Expr(expr) -> [expr.Range]
         | TraverseStep.Module(moduleDecl) -> [moduleDecl.Range]
@@ -80,6 +84,7 @@ type FSharpSelectEmbracingConstructProviderBase() =
         member x.IsAvailable(sourceFile) = true
 
         member x.GetSelectedRange(sourceFile, documentRange) =
+            let mutable documentRange = documentRange
             let fsFile = sourceFile.GetTheOnlyPsiFile() :?> IFSharpFile
             match isNotNull fsFile, fsFile.ParseResults with
             | true, Some parseResults when parseResults.ParseTree.IsSome ->
@@ -115,18 +120,8 @@ type FSharpSelectEmbracingConstructProviderBase() =
                         |> List.map (fun r -> r.ToDocumentRange(document))
                     | None -> []
                     |> List.append containingDeclarations
-                    |> List.filter (fun r -> r.Contains(documentRange))
+                    |> List.filter (fun r -> r.Contains(&documentRange))
                     |> List.sortBy (fun r -> r.Length)
 
                 FSharpDotSelection(fsFile, document, fsFile.Translate(documentRange), ranges) :> _
             | _ -> null
-
-
-[<ProjectFileType(typeof<FSharpProjectFileType>)>]
-type FSharpSelectEmbracingConstructProvider() =
-    inherit FSharpSelectEmbracingConstructProviderBase()
-
-
-[<ProjectFileType(typeof<FSharpScriptProjectFileType>)>]
-type FSharpScriptSelectEmbracingConstructProvider() =
-    inherit FSharpSelectEmbracingConstructProviderBase()

@@ -1,9 +1,10 @@
 ﻿using System;
-using System.Linq;
+using System.Collections.Generic;
 using System.Text;
 using JetBrains.Annotations;
 using JetBrains.ReSharper.Plugins.FSharp.Common.Util;
 using JetBrains.ReSharper.Plugins.FSharp.Psi.Impl.Cache2;
+using JetBrains.ReSharper.Plugins.FSharp.Psi.Impl.Cache2.Parts;
 using JetBrains.ReSharper.Plugins.FSharp.Psi.Impl.Tree;
 using JetBrains.ReSharper.Plugins.FSharp.Psi.Tree;
 using JetBrains.ReSharper.Plugins.FSharp.Psi.Util;
@@ -20,45 +21,84 @@ namespace JetBrains.ReSharper.Plugins.FSharp.Psi.Impl
 {
   public static class FSharpImplUtil
   {
-    private const string CompiledNameAttrName = "Microsoft.FSharp.Core.CompiledNameAttribute";
+    public const string CompiledNameAttrName = "Microsoft.FSharp.Core.CompiledNameAttribute";
+    public const string ModuleSuffix = "CompilationRepresentationFlags.ModuleSuffix";
+    public const string CompiledName = "CompiledName";
+    public const string AttributeSuffix = "Attribute";
+    public const string Interface = "Interface";
+    public const string AbstractClass = "AbstractClass";
+    public const string Class = "Class";
+    public const string Sealed = "Sealed";
+    public const string Struct = "Struct";
 
     public static TreeTextRange GetNameRange([CanBeNull] this ILongIdentifier longIdentifier)
     {
       if (longIdentifier == null) return TreeTextRange.InvalidRange;
 
-      // ReSharper disable once TreeNodeEnumerableCanBeUsedTag
       var ids = longIdentifier.Identifiers;
       return ids.IsEmpty ? TreeTextRange.InvalidRange : ids.Last().GetTreeTextRange();
     }
 
+    public static string GetShortName([NotNull] this IFSharpAttribute attr) =>
+      attr.LongIdentifier?.Name.GetAttributeShortName();
+
     public static bool ShortNameEquals([NotNull] this IFSharpAttribute attr, [NotNull] string shortName) =>
-      attr.LongIdentifier?.Name.GetAttributeShortName() == shortName;
+      attr.GetShortName() == shortName;
+
+    private static bool GetCompiledNameValue(IFSharpAttribute attr, out string compiledName)
+    {
+      // todo: proper expressions evaluation, e.g. "S1" + "S2"
+      if (!attr.ShortNameEquals(CompiledName) || attr.ArgExpression.String == null)
+      {
+        compiledName = null;
+        return false;
+      }
+
+      compiledName =
+        attr.ArgExpression.String.GetText()
+          .Substring(1, attr.ArgExpression.String.GetText().Length - 2)
+          .SubstringBeforeLast("`", StringComparison.Ordinal);
+      return true;
+    }
+
+    private static bool IsModuleSuffixAttribute([NotNull] this IFSharpAttribute attr) =>
+      attr.ShortNameEquals("CompilationRepresentation") &&
+      attr.ArgExpression.LongIdentifier?.QualifiedName == ModuleSuffix;
+
+    public static string GetModuleCompiledName([CanBeNull] this IIdentifier identifier,
+      TreeNodeCollection<IFSharpAttribute> attributes)
+    {
+      var hasModuleSuffix = false;
+      string compiledName = null;
+
+      foreach (var attr in attributes)
+      {
+        if (GetCompiledNameValue(attr, out var value))
+          compiledName = value;
+
+        if (!attr.IsModuleSuffixAttribute())
+          continue;
+
+        hasModuleSuffix = true;
+        break;
+      }
+
+      var sourceName = identifier?.Name;
+      return hasModuleSuffix && sourceName != null
+        ? sourceName + "Module"
+        : compiledName ?? sourceName ?? SharedImplUtil.MISSING_DECLARATION_NAME;
+    }
+
 
     [NotNull]
     public static string GetCompiledName([CanBeNull] this IIdentifier identifier,
       TreeNodeCollection<IFSharpAttribute> attributes)
     {
-      var hasModuleSuffix = false;
-
       foreach (var attr in attributes)
-      {
-        // todo: proper expressions evaluation, e.g. "S1" + "S2"
-        if (attr.ShortNameEquals("CompiledName") && attr.ArgExpression.String != null)
-        {
-          var compiledNameString = attr.ArgExpression.String.GetText();
-          return compiledNameString
-            .Substring(1, compiledNameString.Length - 2)
-            .SubstringBeforeLast("`", StringComparison.Ordinal);
-        }
+        if (GetCompiledNameValue(attr, out var value))
+          return value;
 
-        if (hasModuleSuffix || !attr.ShortNameEquals("CompilationRepresentation")) continue;
-        var arg = attr.ArgExpression.LongIdentifier?.QualifiedName;
-        if (arg != null && arg == "CompilationRepresentationFlags.ModuleSuffix")
-          hasModuleSuffix = true;
-      }
-      var sourceName = identifier?.Name;
-      var compiledName = hasModuleSuffix && sourceName != null ? sourceName + "Module" : sourceName;
-      return compiledName ?? SharedImplUtil.MISSING_DECLARATION_NAME;
+      return identifier?.Name ?? SharedImplUtil.MISSING_DECLARATION_NAME;
     }
 
     [NotNull]
@@ -79,12 +119,12 @@ namespace JetBrains.ReSharper.Plugins.FSharp.Psi.Impl
     public static string[] GetQualifiersAndName(this FSharpIdentifierToken token)
     {
       if (!(token.Parent is ILongIdentifier longIdentifier))
-        return new[] {FSharpNamesUtil.RemoveBackticks(token.GetText())};
+        return new[] {token.GetText().RemoveBackticks()};
 
       var names = new FrugalLocalHashSet<string>();
       foreach (var id in longIdentifier.IdentifiersEnumerable)
       {
-        names.Add(FSharpNamesUtil.RemoveBackticks(id.GetText()));
+        names.Add(id.GetText().RemoveBackticks());
         if (id == token) break;
       }
       return names.ToArray();
@@ -154,18 +194,6 @@ namespace JetBrains.ReSharper.Plugins.FSharp.Psi.Impl
       return cases?.Count > index ? cases[index].DeclaredElement : null;
     }
 
-    [NotNull]
-    public static string GetNestedModuleShortName(this INestedModuleDeclaration declaration, ICacheBuilder cacheBuilder)
-    {
-      var parent = declaration.Parent as IModuleLikeDeclaration;
-      var shortName = declaration.ShortName;
-      var moduleName =
-        parent?.Children<IFSharpTypeDeclaration>().Any(t => t.TypeParameters.IsEmpty && t.ShortName.Equals(shortName, StringComparison.Ordinal)) ?? false
-          ? shortName + "Module"
-          : shortName;
-      return cacheBuilder.Intern(moduleName);
-    }
-
     public static TreeNodeCollection<IFSharpAttribute> GetAttributes([NotNull] this IDeclaration declaration)
     {
       switch (declaration)
@@ -184,5 +212,71 @@ namespace JetBrains.ReSharper.Plugins.FSharp.Psi.Impl
 
     public static string GetAttributeShortName([NotNull] this string attrName) =>
       attrName.SubstringBeforeLast("Attribute", StringComparison.Ordinal);
+
+    public static bool IsCliMutableRecord([NotNull] this TypeElement typeElement)
+    {
+      // todo: climutable attr can be on anon part (`type R`)
+      foreach (var part in typeElement.EnumerateParts())
+        if (part is IRecordPart recordPart && recordPart.CliMutable)
+          return true;
+
+      return false;
+    }
+
+    public static bool IsUnionWithPublicNestedTypes([NotNull] this TypeElement typeElement)
+    {
+      foreach (var part in typeElement.EnumerateParts())
+        if (part is IUnionPart unionPart && unionPart.HasPublicNestedTypes)
+          return true;
+
+      return false;
+
+    }
+
+    public static bool GetTypeKind(IEnumerable<IFSharpAttribute> attributes, out FSharpPartKind fSharpPartKind)
+    {
+      foreach (var attr in attributes)
+      {
+        var attrIds = attr.LongIdentifier.Identifiers;
+        if (attrIds.IsEmpty)
+          continue;
+
+        switch (attrIds.Last()?.GetText().DropAttributeSuffix())
+        {
+          case Interface:
+          {
+            fSharpPartKind = FSharpPartKind.Interface;
+            return true;
+          }
+          case AbstractClass:
+          case Sealed:
+          case Class:
+          {
+            fSharpPartKind = FSharpPartKind.Class;
+            return true;
+          }
+          case Struct:
+          {
+            fSharpPartKind = FSharpPartKind.Struct;
+            return true;
+          }
+        }
+      }
+
+      fSharpPartKind = default;
+      return false;
+    }
+
+    public static string DropAttributeSuffix([NotNull] this string attrName) =>
+      attrName.SubstringBeforeLast(AttributeSuffix, StringComparison.Ordinal);
+
+    public static bool HasAttribute([NotNull] this IFSharpTypeDeclaration typeDeclaration, [NotNull] string shortName)
+    {
+      foreach (var attr in typeDeclaration.Attributes)
+        if (attr.ShortNameEquals(shortName))
+          return true;
+
+      return false;
+    }
   }
 }

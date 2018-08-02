@@ -1,76 +1,26 @@
 package templates
 
-import com.intellij.openapi.project.Project
-import com.jetbrains.rider.debugger.DotNetDebugRunner
-import com.jetbrains.rider.diagnostics.LogTraceScenarios
-import com.jetbrains.rider.run.mono.MonoDebugProfileState
+import com.intellij.execution.runners.ExecutionEnvironment
+import com.jetbrains.rider.run.configurations.project.DotNetProjectConfiguration
 import com.jetbrains.rider.test.annotations.TestEnvironment
-import com.jetbrains.rider.test.base.BaseTestWithSolutionBase
+import com.jetbrains.rider.test.base.RiderTemplatesTestCoreBase
 import com.jetbrains.rider.test.enums.ToolsetVersion
-import com.jetbrains.rider.test.framework.*
+import com.jetbrains.rider.test.framework.executeWithGold
 import com.jetbrains.rider.test.scriptingApi.*
-import org.testng.annotations.AfterClass
-import org.testng.annotations.BeforeMethod
+import com.jetbrains.rider.util.idea.toVirtualFile
 import org.testng.annotations.Test
-import java.io.File
-import java.nio.file.Paths
-import java.time.Duration
 
 @Test
-abstract class FSharpTemplatesTestCore : BaseTestWithSolutionBase() {
-
-    companion object {
-        private val defaultBuildTimeout = Duration.ofMinutes(2)
-    }
-
-    protected abstract fun runWithDotNetCliVersion(): String
-
-    private val editorGoldFile: File
-        get() = File(testCaseGoldDirectory, testCaseName + "_opened")
-    protected val configGoldFile: File
-        get() = File(testCaseGoldDirectory, testCaseName + "_rcf")
-    @Suppress("unused")
-    protected val debugGoldFile: File
-        get() = File(testCaseGoldDirectory, testCaseName + "_debug")
-    private val binFolderContentGoldFile: File
-        get() = File(testCaseGoldDirectory, testCaseName + "_bin")
-    private val fileListAbsoluteFilesGoldFile: File
-        get() = File(testCaseGoldDirectory, testCaseName + "_abs")
-
-    override val traceCategories: List<String>
-        get() = arrayListOf(
-                "#${DotNetDebugRunner::class.java.name}",
-                "#${MonoDebugProfileState::class.java.name}",
-                "JetBrains.ProjectModel.ProjectsHost.SolutionHost",
-                "JetBrains.ReSharper.Host.Features.ProjectModel.View",
-                *super.traceCategories.toTypedArray())
-
-    override val traceScenarios: Set<LogTraceScenarios>
-        get() = setOf(LogTraceScenarios.Caches)
-
-    @BeforeMethod
-    fun setUpBeforeMethod() {
-        dotnetCoreCliVersion = runWithDotNetCliVersion()
-        dotnetCoreCliPath = getDotNetCorePathFromTestData(dotnetCoreCliVersion).canonicalPath
-        setUpDotNetCoreCliPath(dotnetCoreCliPath)
-
-        //set invalid mono path, cause all core projects should use only core sdk
-        setUpCustomMonoPath(dotnetCoreCliPath)
-    }
-
-    @AfterClass
-    fun resetValuesAfterClass() {
-        dotnetCoreCliVersion = "2.0.0"
-        dotnetCoreCliPath = getDotNetCorePathFromTestData(dotnetCoreCliVersion).canonicalPath
-        setUpDotNetCoreCliPath(dotnetCoreCliPath)
-
-        setUpCustomMonoPath("")
-    }
+abstract class FSharpTemplatesTestCore : RiderTemplatesTestCoreBase() {
 
     @TestEnvironment(toolset = ToolsetVersion.TOOLSET_15_CORE)
     fun classlibCoreTemplate() {
+        var templateId = ProjectTemplateIds.Core.fsharp_classLibrary
+        if (runWithDotNetCliVersion().startsWith("2.1"))
+            templateId = ProjectTemplateIds.Core.fsharp_classLibrary21
+
         val projectName = "ClassLibrary"
-        doCoreTest(ProjectTemplateIds.Core.fsharp_classLibrary, projectName) { project ->
+        doCoreTest(templateId, projectName) { project ->
             checkSwea(project)
             checkSelectedRunConfigurationExecutionNotAllowed(project)
         }
@@ -89,9 +39,13 @@ abstract class FSharpTemplatesTestCore : BaseTestWithSolutionBase() {
 
     @TestEnvironment(toolset = ToolsetVersion.TOOLSET_15_CORE)
     fun consoleAppCoreTemplate() {
+        var templateId = ProjectTemplateIds.Core.fsharp_consoleApplication
+        if (runWithDotNetCliVersion().startsWith("2.1"))
+            templateId = ProjectTemplateIds.Core.fsharp_consoleApplication21
+
         val projectName = "ConsoleApplication"
-        //val programFs = activeSolutionDirectory.resolve(projectName).resolve("Program.fs")
-        doCoreTest(ProjectTemplateIds.Core.fsharp_consoleApplication, projectName) { project ->
+        val programFs = activeSolutionDirectory.resolve(projectName).resolve("Program.fs")
+        doCoreTest(templateId, projectName) { project ->
             checkSwea(project)
             checkCanExecuteSelectedRunConfiguration(project)
             executeWithGold(configGoldFile) { printStream ->
@@ -100,8 +54,7 @@ abstract class FSharpTemplatesTestCore : BaseTestWithSolutionBase() {
             val output = runProgram(project)
             assert(output.contains("Hello World from F#!")) { "Wrong program output: $output" }
 
-            //todo enable after move ScriptingAPI.Debug.Temp to ScriptingAPI
-            /*val beforeRun: ExecutionEnvironment.() -> Unit = {
+            val beforeRun: ExecutionEnvironment.() -> Unit = {
                 this.runProfile as DotNetProjectConfiguration
                 val envVars = mutableMapOf<String, String>()
                 //envVars.putAll(configuration.environmentVariables)
@@ -109,16 +62,17 @@ abstract class FSharpTemplatesTestCore : BaseTestWithSolutionBase() {
                 //configuration.environmentVariables = envVars
                 toggleBreakpoint(project, programFs.toVirtualFile(true)!!, 7)
             }
-            debugProgram(project, debugGoldFile, beforeRun) {
-                waitForPause()
-                dumpFullCurrentData(2)
-                resumeSession()
-
-                // waiting for exit console app
-                if (!this.session.debugProcess.processHandler.waitFor(5000)) {
-                    logger.warn("Console app hasn't terminated for 5 seconds.")
-                }
-            }*/
+            executeWithGold(debugGoldFile, getGoldFileSystemDependentSuffix()) {
+                debugProgram(project, it, beforeRun,
+                    test = {
+                        waitForPause()
+                        dumpFullCurrentData(2)
+                        resumeSession()
+                    },
+                    outputConsumer = {},
+                    killProcessAfterTest = true
+                )
+            }
 
         }
     }
@@ -146,37 +100,6 @@ abstract class FSharpTemplatesTestCore : BaseTestWithSolutionBase() {
                 resumeSession()
             }*/
 
-        }
-    }
-
-    private fun doCoreTest(templateName: String, projectName : String, targetFramework: String? = null, function: (Project) -> Unit) {
-        val params = OpenSolutionParams()
-        params.restoreNuGetPackages = true //it's always true in withSolutionOpenedFromProject
-        params.backendLoadedTimeoutInSec = 120
-        params.waitForCaches = true
-
-        try {
-            withSolutionOpenedFromTemplate(templateName, projectName, targetFramework, params) { project ->
-                executeWithGold(editorGoldFile) {
-                    dumpOpenedDocument(it, project) //every new dotnet version caret pos is changed
-                }
-
-                testProjectModel(testGoldFile, project) {
-                    dump("Opened", project, activeSolutionDirectory, false, false) {} //contains close editors
-                }
-
-                //checkBuildAndSwea(project, "", 0) //until all tests will be ok
-                buildSolutionWithReSharperBuild(project, defaultBuildTimeout)
-                checkThatBuildArtifactsExist(project)
-                dumpAllProjectFilesListByContainsPath(project, Paths.get("bin"), binFolderContentGoldFile)
-                dumpAllFileListAbsolute(project, fileListAbsoluteFilesGoldFile)
-
-                checkThatSolutionWasRestoredOnce(backendLog)
-
-                function(project)
-            }
-        } finally {
-            closeSolution(true)
         }
     }
 

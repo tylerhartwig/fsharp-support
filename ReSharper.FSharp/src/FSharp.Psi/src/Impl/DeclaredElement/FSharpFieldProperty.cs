@@ -1,8 +1,9 @@
 ﻿using JetBrains.Annotations;
-using JetBrains.ReSharper.Plugins.FSharp.Psi.Impl.Cache2;
+using JetBrains.ReSharper.Plugins.FSharp.Psi.Impl.Tree;
 using JetBrains.ReSharper.Plugins.FSharp.Psi.Tree;
 using JetBrains.ReSharper.Plugins.FSharp.Psi.Util;
 using JetBrains.ReSharper.Psi;
+using JetBrains.ReSharper.Psi.ExtensionsAPI.Caches2;
 using Microsoft.FSharp.Compiler.SourceCodeServices;
 
 namespace JetBrains.ReSharper.Plugins.FSharp.Psi.Impl.DeclaredElement
@@ -10,7 +11,7 @@ namespace JetBrains.ReSharper.Plugins.FSharp.Psi.Impl.DeclaredElement
   /// <summary>
   /// Field in a record or in a union case or in an exception
   /// </summary>
-  internal class FSharpFieldProperty : FSharpFieldPropertyBase
+  internal class FSharpFieldProperty : FSharpFieldPropertyBase<FieldDeclaration>
   {
     [NotNull]
     public FSharpField Field { get; }
@@ -30,6 +31,6 @@ namespace JetBrains.ReSharper.Plugins.FSharp.Psi.Impl.DeclaredElement
     public override bool IsStatic => false;
 
     public override bool IsWritable =>
-      Field.IsMutable || ((GetContainingType() as FSharpRecord)?.IsCliMutable ?? false);
+      Field.IsMutable || GetContainingType() is TypeElement typeElement && typeElement.IsCliMutableRecord();
   }
 }

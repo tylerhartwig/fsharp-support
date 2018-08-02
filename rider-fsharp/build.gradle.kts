@@ -40,6 +40,8 @@ java {
 
 
 val baseVersion = "2018.2"
+val buildCounter = ext.properties["build.number"] ?: "9999"
+version = "$baseVersion.$buildCounter"
 
 intellij {
     type = "RD"
@@ -87,6 +89,7 @@ val pluginFiles = listOf(
         "FSharp.Common/bin/$buildConfiguration/net461/JetBrains.ReSharper.Plugins.FSharp.Common",
         "FSharp.Psi/bin/$buildConfiguration/net461/JetBrains.ReSharper.Plugins.FSharp.Psi",
         "FSharp.Psi.Features/bin/$buildConfiguration/net461/JetBrains.ReSharper.Plugins.FSharp.Psi.Features",
+        "FSharp.Templates/bin/$buildConfiguration/net461/JetBrains.ReSharper.Plugins.FSharp.Templates",
         "Daemon.FSharp/bin/$buildConfiguration/net461/JetBrains.ReSharper.Plugins.FSharp.Daemon.Cs",
         "Services.FSharp/bin/$buildConfiguration/net461/JetBrains.ReSharper.Plugins.FSharp.Services.Cs")
 
@@ -204,7 +207,7 @@ tasks {
         }
         val rerunSuccessfulTests = false
         outputs.upToDateWhen { !rerunSuccessfulTests }
-
+        ignoreFailures = true
     }
 
     "writeRiderSdkVersionProps" {
@@ -232,6 +235,13 @@ tasks {
         }
     }
 
+    "assemble" {
+        doLast {
+            logger.lifecycle("Plugin version: $version")
+            logger.lifecycle("##teamcity[buildNumber '$version']")
+        }
+    }
+
     "prepare" {
         group = riderFSharpTargetsGroup
         dependsOn("rdgen", "writeNuGetConfig", "writeRiderSdkVersionProps")
@@ -239,6 +249,17 @@ tasks {
             exec {
                 executable = "dotnet"
                 args = listOf("restore", "$resharperPluginPath/ReSharper.FSharp.sln")
+            }
+        }
+    }
+
+    "buildReSharperPlugin" {
+        group = riderFSharpTargetsGroup
+        dependsOn("prepare")
+        doLast {
+            exec {
+                executable = "msbuild"
+                args = listOf("$resharperPluginPath/ReSharper.FSharp.sln")
             }
         }
     }

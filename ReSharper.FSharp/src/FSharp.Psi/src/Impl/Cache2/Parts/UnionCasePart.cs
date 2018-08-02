@@ -9,15 +9,12 @@ using JetBrains.Util;
 
 namespace JetBrains.ReSharper.Plugins.FSharp.Psi.Impl.Cache2.Parts
 {
-  internal class UnionCasePart : FSharpClassLikePart<IUnionCaseDeclaration>, Class.IClassPart
+  internal class UnionCasePart : FSharpClassLikePart<INestedTypeUnionCaseDeclaration>, Class.IClassPart
   {
-    private readonly bool myIsHiddenCase;
-
-    public UnionCasePart([NotNull] IUnionCaseDeclaration declaration, [NotNull] ICacheBuilder cacheBuilder,
-      bool isHiddenCase) : base(declaration, ModifiersUtil.GetDecoration(declaration),
-      TreeNodeCollection<ITypeParameterOfTypeDeclaration>.Empty, cacheBuilder)
+    public UnionCasePart([NotNull] INestedTypeUnionCaseDeclaration declaration, [NotNull] ICacheBuilder cacheBuilder)
+      : base(declaration, ModifiersUtil.GetDecoration(declaration),
+        TreeNodeCollection<ITypeParameterOfTypeDeclaration>.Empty, cacheBuilder)
     {
-      myIsHiddenCase = isHiddenCase;
       var unionShortName = declaration.GetContainingNode<IUnionDeclaration>()?.ShortName;
       ExtendsListShortNames =
         unionShortName != null
@@ -28,7 +25,6 @@ namespace JetBrains.ReSharper.Plugins.FSharp.Psi.Impl.Cache2.Parts
     protected override void Write(IWriter writer)
     {
       base.Write(writer);
-      writer.WriteBool(myIsHiddenCase);
       writer.WriteStringArray(ExtendsListShortNames);
     }
 
@@ -36,7 +32,7 @@ namespace JetBrains.ReSharper.Plugins.FSharp.Psi.Impl.Cache2.Parts
 
     public override IDeclaredType GetBaseClassType()
     {
-      var typeElement = (GetDeclaration()?.GetContainingNode<IUnionDeclaration>() as ITypeDeclaration)?.DeclaredElement;
+      var typeElement = TypeElement.GetContainingType();
       return typeElement != null
         ? TypeFactory.CreateType(typeElement)
         : null;
@@ -44,26 +40,27 @@ namespace JetBrains.ReSharper.Plugins.FSharp.Psi.Impl.Cache2.Parts
 
     public UnionCasePart(IReader reader) : base(reader)
     {
-      myIsHiddenCase = reader.ReadBool();
       ExtendsListShortNames = reader.ReadStringArray();
     }
 
     public override IEnumerable<IDeclaredType> GetSuperTypes()
     {
-      var type = (GetDeclaration()?.GetContainingNode<IUnionDeclaration>() as ITypeDeclaration)?.DeclaredElement;
-      return type != null ? new[] {TypeFactory.CreateType(type)} : EmptyList<IDeclaredType>.InstanceList;
+      var baseType = GetBaseClassType();
+      if (baseType == null)
+        return EmptyList<IDeclaredType>.Instance;
+
+      return new[] {baseType};
     }
 
     public override TypeElement CreateTypeElement()
     {
-      return new FSharpUnionCase(this);
+      return new FSharpNestedTypeUnionCase(this);
     }
 
     public override MemberDecoration Modifiers =>
-      myIsHiddenCase || (GetDeclaration()?.Fields.IsEmpty ?? false)
+      Parent is IUnionPart unionPart && !unionPart.HasPublicNestedTypes
         ? MemberDecoration.FromModifiers(ReSharper.Psi.Modifiers.INTERNAL)
         : base.Modifiers;
-
 
     public MemberPresenceFlag GetMemberPresenceFlag()
     {
@@ -79,7 +76,7 @@ namespace JetBrains.ReSharper.Plugins.FSharp.Psi.Impl.Cache2.Parts
         var declaration = GetDeclaration();
         if (declaration == null)
           return EmptyList<FSharpFieldProperty>.Instance;
-        
+
         var result = new LocalList<FSharpFieldProperty>();
         foreach (var fieldDeclaration in declaration.Fields)
         {
